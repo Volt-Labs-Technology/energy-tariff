@@ -1,0 +1,27 @@
+{
+  "site": "synthetic-4cp",
+  "contracts": [
+    {
+      "name": "primary",
+      "applies_to": "site",
+      "period": { "start": "2026-01-01", "end": "2026-12-31" },
+      "charges": [
+        { "type": "energy", "kind": "dam_indexed" },
+        {
+          "type": "coincident_peak",
+          "intervals_per_year": 4,
+          "interval_minutes": 15,
+          "months": [6, 7, 8, 9],
+          "pass_through": "assumed",
+          "rate": {
+            "value": 50.0,
+            "unit": "usd_per_kw_year",
+            "source": "SYNTHETIC ESTIMATE",
+            "dated": "2026-01-01",
+            "verified": false
+          }
+        }
+      ]
+    }
+  ]
+}
