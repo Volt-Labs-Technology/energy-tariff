@@ -213,8 +213,6 @@ mod tests {
         // Ratchet floor = 80/100 × 200 = 160 kW.
         // Billed kW = max(100, 160) = 160. 160 × $10/kW-month = $1600.
         let ratchet = Ratchet::new(80.0, 1).expect("80% of 1 month");
-        assert_eq!(ratchet.pct().to_string(), "80");
-        assert_eq!(ratchet.months(), 1);
         let charge =
             DemandCharge::new(ten_dollars_per_kw_month(), window_15(), Some(ratchet), None)
                 .expect("valid charge");
@@ -259,6 +257,18 @@ mod tests {
             Kilowatt::new(history.max_peak_before(march, 0)),
             Kilowatt::new(0.0)
         );
+    }
+
+    #[test]
+    fn ratchet_pct_returns_the_stored_percent() {
+        let ratchet = Ratchet::new(80.0, 1).expect("80% of 1 month");
+        assert_eq!(ratchet.pct().to_string(), "80");
+    }
+
+    #[test]
+    fn ratchet_months_returns_the_stored_lookback() {
+        let ratchet = Ratchet::new(80.0, 1).expect("80% of 1 month");
+        assert_eq!(ratchet.months(), 1);
     }
 
     #[test]
