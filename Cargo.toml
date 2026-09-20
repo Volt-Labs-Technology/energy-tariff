@@ -5,7 +5,12 @@ edition = "2024"
 rust-version = "1.98"
 license = "MIT"
 description = "Types and calculations for a site's electricity contracts: energy settlement, demand charges with ratchets, coincident-peak charges. The tariff is data; the crate computes each charge that is present. Pure, no I/O."
-publish = false
+repository = "https://github.com/Volt-Labs-Technology/energy-tariff"
+homepage = "https://github.com/Volt-Labs-Technology/energy-tariff"
+documentation = "https://docs.rs/energy-tariff"
+readme = "README.md"
+keywords = ["electricity", "tariff", "energy", "demand-charge", "settlement"]
+categories = ["science", "parser-implementations"]
 
 [dependencies]
 serde = "1"
@@ -15,6 +20,3 @@ toml = "1"
 
 [features]
 default = ["serde/derive"]
-
-[lints]
-workspace = true
