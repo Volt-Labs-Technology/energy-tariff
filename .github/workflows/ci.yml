@@ -22,6 +22,8 @@ jobs:
         run: RUSTFLAGS="-D warnings" cargo test --all
       - name: doc tests
         run: RUSTFLAGS="-D warnings" cargo test --doc
+      - name: public-items scanner self-check
+        run: PUBLIC_ITEMS_SELFTEST=1 python3 scripts/public_items_have_tests.py
       - name: public functions appear in tests
         run: python3 scripts/public_items_have_tests.py
       - name: rustdoc

@@ -130,10 +130,15 @@ mod tests {
             real_time: &[UsdPerMwh::new(5.0), UsdPerMwh::new(100.0)],
         };
         let hedged = HedgedRate::new(45.0).expect("valid flat");
-        assert_eq!(hedged.flat(), UsdPerMwh::new(45.0));
         let bill = energy_bill(&Settlement::Hedged(hedged), &load_two_hours(), &prices)
             .expect("hedged ignores prices");
         assert_eq!(bill, Usd::new(90.0));
+    }
+
+    #[test]
+    fn hedged_rate_flat_returns_the_stored_price() {
+        let hedged = HedgedRate::new(45.0).expect("valid flat");
+        assert_eq!(hedged.flat(), UsdPerMwh::new(45.0));
     }
 
     #[test]

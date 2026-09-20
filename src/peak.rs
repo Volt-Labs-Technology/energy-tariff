@@ -166,7 +166,7 @@ mod tests {
             Kilowatt::new(30.0),
             Kilowatt::new(40.0),
         ];
-        let exposure =
+        let exposure: PeakExposure =
             coincident_peak_exposure(&rule(4, PassThrough::Assumed), &kw).expect("4 vs 4");
         assert_eq!(exposure.amount(), Usd::new(250.0));
         assert_eq!(exposure.report_line(), None);
@@ -184,7 +184,7 @@ mod tests {
     #[test]
     fn not_passed_through_is_zero_with_a_why_line() {
         let kw = [Kilowatt::new(100.0); 4];
-        let exposure =
+        let exposure: PeakExposure =
             coincident_peak_exposure(&rule(4, PassThrough::NotPassedThrough), &kw).expect("4 vs 4");
         assert_eq!(exposure.amount(), Usd::new(0.0));
         let line = exposure.report_line().expect("why line");
@@ -229,7 +229,7 @@ mod tests {
 
     #[test]
     fn rule_stores_the_intervals_months_and_rate() {
-        let built = rule(4, PassThrough::Confirmed);
+        let built: CoincidentPeakRule = rule(4, PassThrough::Confirmed);
         assert_eq!(built.intervals_per_year(), 4);
         assert_eq!(built.interval_minutes(), fifteen());
         assert_eq!(built.months(), &[6, 7, 8, 9]);

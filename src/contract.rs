@@ -616,6 +616,48 @@ mod tests {
     use super::*;
 
     #[test]
+    fn usd_get_returns_the_inner_amount() {
+        let amount = Usd::new(1.0);
+        assert_eq!(amount.get().to_string(), "1");
+    }
+
+    #[test]
+    fn kilowatt_get_returns_the_inner_demand() {
+        let demand = Kilowatt::new(1.0);
+        assert_eq!(demand.get().to_string(), "1");
+    }
+
+    #[test]
+    fn kilowatt_hour_get_returns_the_inner_energy() {
+        let energy = KilowattHour::new(1.0);
+        assert_eq!(energy.get().to_string(), "1");
+    }
+
+    #[test]
+    fn usd_per_mwh_get_returns_the_inner_price() {
+        let price = UsdPerMwh::new(1.0);
+        assert_eq!(price.get().to_string(), "1");
+    }
+
+    #[test]
+    fn minutes_get_returns_the_inner_count() {
+        let window = Minutes::demand_window(15).expect("15 is legal");
+        assert_eq!(window.get(), 15);
+    }
+
+    #[test]
+    fn charge_name_get_returns_the_inner_text() {
+        let name = ChargeName::new("primary:energy".to_owned());
+        assert_eq!(name.get(), "primary:energy");
+    }
+
+    #[test]
+    fn fixed_charge_amount_returns_the_stored_dollars() {
+        let charge = FixedCharge::new(7.0).expect("valid");
+        assert_eq!(charge.amount(), Usd::new(7.0));
+    }
+
+    #[test]
     fn site_alias_accepts_hyphenated_lowercase() {
         let alias = SiteAlias::parse("synthetic-4cp").expect("fixture alias");
         assert_eq!(alias.get(), "synthetic-4cp");
