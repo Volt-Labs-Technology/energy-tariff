@@ -213,6 +213,8 @@ mod tests {
         // Ratchet floor = 80/100 × 200 = 160 kW.
         // Billed kW = max(100, 160) = 160. 160 × $10/kW-month = $1600.
         let ratchet = Ratchet::new(80.0, 1).expect("80% of 1 month");
+        assert_eq!(ratchet.pct().to_string(), "80");
+        assert_eq!(ratchet.months(), 1);
         let charge =
             DemandCharge::new(ten_dollars_per_kw_month(), window_15(), Some(ratchet), None)
                 .expect("valid charge");
@@ -221,6 +223,42 @@ mod tests {
         let history = DemandHistory::new().with_peak(february, Kilowatt::new(200.0));
         let bill = demand_bill(&charge, &[Kilowatt::new(100.0)], march, &history);
         assert_eq!(bill, Usd::new(1600.0));
+    }
+
+    #[test]
+    fn demand_charge_with_time_of_use_bills_the_supplied_intervals() {
+        let hours = TimeOfUse::new(7, 19).expect("valid");
+        let charge = DemandCharge::new(ten_dollars_per_kw_month(), window_15(), None, Some(hours))
+            .expect("constructor accepts time-of-use");
+        assert_eq!(charge.hours(), Some(hours));
+        assert_eq!(charge.window().get(), 15);
+        assert_eq!(charge.ratchet(), None);
+        assert_eq!(charge.rate().value().to_string(), "10");
+        let month = YearMonth::new(2026, 3).expect("valid");
+        let bill = demand_bill(
+            &charge,
+            &[Kilowatt::new(100.0), Kilowatt::new(40.0)],
+            month,
+            &DemandHistory::new(),
+        );
+        // Peak of the supplied intervals is 100 kW × $10/kW-month = $1000.
+        // Time-of-use is stored; demand_bill does not resample.
+        assert_eq!(bill, Usd::new(1000.0));
+    }
+
+    #[test]
+    fn max_peak_before_reads_the_lookback_months() {
+        let march = YearMonth::new(2026, 3).expect("valid");
+        let february = YearMonth::new(2026, 2).expect("valid");
+        let history = DemandHistory::new().with_peak(february, Kilowatt::new(200.0));
+        assert_eq!(
+            Kilowatt::new(history.max_peak_before(march, 1)),
+            Kilowatt::new(200.0)
+        );
+        assert_eq!(
+            Kilowatt::new(history.max_peak_before(march, 0)),
+            Kilowatt::new(0.0)
+        );
     }
 
     #[test]

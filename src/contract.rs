@@ -690,4 +690,87 @@ mod tests {
             TariffError::EmptyContractName
         );
     }
+
+    #[test]
+    fn empty_meter_scope_is_refused() {
+        assert_eq!(MeterScope::new(""), Err(TariffError::EmptyMeterScope));
+    }
+
+    #[test]
+    fn year_month_refuses_month_zero_and_thirteen() {
+        assert_eq!(YearMonth::new(2026, 0), Err(TariffError::InvalidMonth(0)));
+        assert_eq!(YearMonth::new(2026, 13), Err(TariffError::InvalidMonth(13)));
+    }
+
+    #[test]
+    fn minutes_positive_refuses_zero() {
+        assert_eq!(
+            Minutes::positive(0),
+            Err(TariffError::InvalidIntervalMinutes(0))
+        );
+    }
+
+    #[test]
+    fn fixed_charge_refuses_a_negative_amount() {
+        assert!(matches!(
+            FixedCharge::new(-1.0),
+            Err(TariffError::IllegalRate { .. })
+        ));
+    }
+
+    #[test]
+    fn rate_with_source_refuses_nan_and_infinity() {
+        let dated = CalendarDate::new(2026, 1, 1).expect("valid");
+        assert!(matches!(
+            RateWithSource::new(f64::NAN, RateUnit::UsdPerKwMonth, "x", dated, false),
+            Err(TariffError::IllegalRate { .. })
+        ));
+        assert!(matches!(
+            RateWithSource::new(f64::INFINITY, RateUnit::UsdPerKwMonth, "x", dated, false),
+            Err(TariffError::IllegalRate { .. })
+        ));
+    }
+
+    #[test]
+    fn rate_with_source_preserves_labels() {
+        let dated = CalendarDate::new(2026, 1, 1).expect("valid");
+        let rate = RateWithSource::new(
+            1.0,
+            RateUnit::UsdPerKwMonth,
+            "SYNTHETIC ESTIMATE",
+            dated,
+            false,
+        )
+        .expect("valid");
+        assert_eq!(rate.value().to_string(), "1");
+        assert_eq!(rate.unit(), RateUnit::UsdPerKwMonth);
+        assert_eq!(rate.source(), "SYNTHETIC ESTIMATE");
+        assert_eq!(rate.dated(), dated);
+        assert!(!rate.verified());
+    }
+
+    #[test]
+    fn site_tariff_holds_the_site_and_contracts() {
+        let start = CalendarDate::new(2026, 1, 1).expect("valid");
+        let end = CalendarDate::new(2026, 12, 31).expect("valid");
+        let period = DateRange::new(start, end).expect("valid");
+        let contract = Contract::new(
+            "primary",
+            MeterScope::new("site").expect("valid"),
+            period,
+            vec![],
+        )
+        .expect("valid");
+        assert_eq!(contract.name(), "primary");
+        assert_eq!(contract.applies_to().get(), "site");
+        assert_eq!(contract.period().start(), start);
+        assert_eq!(contract.period().end(), end);
+        assert!(contract.charges().is_empty());
+        let tariff = SiteTariff::new(
+            SiteAlias::parse("synthetic-hold").expect("alias"),
+            vec![contract],
+        );
+        assert_eq!(tariff.site().get(), "synthetic-hold");
+        assert_eq!(tariff.contracts().len(), 1);
+    }
 }

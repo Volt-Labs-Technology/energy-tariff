@@ -32,6 +32,8 @@
 //! # load(toml, json).expect("SYNTHETIC");
 //! ```
 
+#![deny(missing_docs)]
+
 mod contract;
 mod demand;
 mod ledgers;
@@ -57,7 +59,12 @@ pub enum TariffError {
     EmptySiteAlias,
     /// A character an alias cannot hold.
     #[error("`{alias}` is not a site alias: `{character}` is not one of a-z, 0-9 or -")]
-    SiteAliasCharacter { alias: String, character: char },
+    SiteAliasCharacter {
+        /// The rejected alias text.
+        alias: String,
+        /// The first character that is not `a-z`, `0-9`, or `-`.
+        character: char,
+    },
     /// A contract with no name cannot be told apart from another.
     #[error("a contract name cannot be empty")]
     EmptyContractName,
@@ -66,7 +73,10 @@ pub enum TariffError {
     EmptyMeterScope,
     /// Rate value is negative or not finite.
     #[error("rate is negative or not finite: {value}")]
-    IllegalRate { value: String },
+    IllegalRate {
+        /// The rejected number, as text so NaN and infinities still print.
+        value: String,
+    },
     /// Demand interval length is not 15 or 30 minutes.
     #[error("demand window must be 15 or 30 minutes, got {0}")]
     InvalidWindow(u16),
@@ -96,10 +106,20 @@ pub enum TariffError {
     InvalidHour(u8),
     /// Supplied coincident-peak kW count does not match the rule.
     #[error("coincident-peak intervals: expected {expected}, got {got}")]
-    IntervalCountMismatch { expected: usize, got: usize },
+    IntervalCountMismatch {
+        /// Count the rule requires.
+        expected: usize,
+        /// Count the caller supplied.
+        got: usize,
+    },
     /// Energy load hours and the price series are different lengths.
     #[error("load length {load} does not match price length {prices}")]
-    SeriesLengthMismatch { load: usize, prices: usize },
+    SeriesLengthMismatch {
+        /// Length of the load series.
+        load: usize,
+        /// Length of the price series.
+        prices: usize,
+    },
     /// JSON text did not match the schema, or a constructor refused a value.
     #[error("JSON: {0}")]
     Json(String),
