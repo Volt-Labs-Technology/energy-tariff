@@ -168,8 +168,8 @@ mod tests {
         ];
         let exposure: PeakExposure =
             coincident_peak_exposure(&rule(4, PassThrough::Assumed), &kw).expect("4 vs 4");
-        assert_eq!(exposure.amount(), Usd::new(250.0));
-        assert_eq!(exposure.report_line(), None);
+        assert_eq!(PeakExposure::amount(&exposure), Usd::new(250.0));
+        assert_eq!(PeakExposure::report_line(&exposure), None);
     }
 
     #[test]
@@ -230,10 +230,16 @@ mod tests {
     #[test]
     fn rule_stores_the_intervals_months_and_rate() {
         let built: CoincidentPeakRule = rule(4, PassThrough::Confirmed);
-        assert_eq!(built.intervals_per_year(), 4);
-        assert_eq!(built.interval_minutes(), fifteen());
-        assert_eq!(built.months(), &[6, 7, 8, 9]);
-        assert_eq!(built.rate().value().to_string(), "10");
-        assert_eq!(built.pass_through(), PassThrough::Confirmed);
+        assert_eq!(CoincidentPeakRule::intervals_per_year(&built), 4);
+        assert_eq!(CoincidentPeakRule::interval_minutes(&built), fifteen());
+        assert_eq!(CoincidentPeakRule::months(&built), &[6, 7, 8, 9]);
+        assert_eq!(
+            RateWithSource::value(CoincidentPeakRule::rate(&built)).to_string(),
+            "10"
+        );
+        assert_eq!(
+            CoincidentPeakRule::pass_through(&built),
+            PassThrough::Confirmed
+        );
     }
 }

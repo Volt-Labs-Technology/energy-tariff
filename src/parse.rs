@@ -490,7 +490,7 @@ mod tests {
     #[test]
     fn json_round_trip_preserves_the_tariff() {
         let original = SiteTariff::from_json(SYNTHETIC_4CP_JSON).expect("json");
-        let encoded = original.to_json().expect("encode");
+        let encoded = SiteTariff::to_json(&original).expect("encode");
         let again = SiteTariff::from_json(&encoded).expect("decode");
         assert_eq!(original, again);
     }
@@ -498,7 +498,7 @@ mod tests {
     #[test]
     fn toml_round_trip_preserves_the_tariff() {
         let original = SiteTariff::from_toml(SYNTHETIC_DEMAND_TOML).expect("toml");
-        let encoded = original.to_toml().expect("encode");
+        let encoded = SiteTariff::to_toml(&original).expect("encode");
         let again = SiteTariff::from_toml(&encoded).expect("decode");
         assert_eq!(original, again);
     }
