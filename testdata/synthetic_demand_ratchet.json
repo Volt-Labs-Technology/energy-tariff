@@ -1,0 +1,25 @@
+{
+  "site": "synthetic-demand-ratchet",
+  "contracts": [
+    {
+      "name": "primary",
+      "applies_to": "site",
+      "period": { "start": "2026-01-01", "end": "2026-12-31" },
+      "charges": [
+        { "type": "energy", "kind": "dam_indexed" },
+        {
+          "type": "demand",
+          "window": 15,
+          "ratchet": { "pct": 80.0, "months": 1 },
+          "rate": {
+            "value": 10.0,
+            "unit": "usd_per_kw_month",
+            "source": "SYNTHETIC ESTIMATE",
+            "dated": "2026-01-01",
+            "verified": false
+          }
+        }
+      ]
+    }
+  ]
+}
