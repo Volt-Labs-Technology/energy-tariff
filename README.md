@@ -87,6 +87,7 @@ load is identical for the pair.
 ## What it deliberately does not do
 
 It does not predict peaks, read invoices, fetch prices, or know anything about
-a specific utility.
+a specific utility. It does no filesystem I/O, no network I/O, and does not
+read a clock.
 
 Version 0.x: the API may change before 1.0.
