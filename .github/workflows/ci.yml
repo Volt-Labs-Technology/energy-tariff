@@ -22,6 +22,10 @@ jobs:
         run: RUSTFLAGS="-D warnings" cargo test --all
       - name: doc tests
         run: RUSTFLAGS="-D warnings" cargo test --doc
+      - name: public functions appear in tests
+        run: python3 scripts/public_items_have_tests.py
+      - name: rustdoc
+        run: RUSTDOCFLAGS="-D missing_docs" cargo doc --no-deps
       - name: src/ has no filesystem, network, or clock APIs
         run: |
           python3 - <<'PY'

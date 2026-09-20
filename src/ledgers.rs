@@ -237,4 +237,35 @@ mod tests {
         assert_eq!(entries[0].0.get(), "fourcp:coincident_peak");
         assert_eq!(entries[0].1, Usd::new(100.0));
     }
+
+    #[test]
+    fn dam_indexed_ledgers_refuse_a_load_price_length_mismatch() {
+        let contract = Contract::new(
+            "first",
+            scope(),
+            period(),
+            vec![Charge::Energy(Settlement::DamIndexed)],
+        )
+        .expect("valid");
+        let tariff = SiteTariff::new(
+            SiteAlias::parse("synthetic-mismatch").expect("alias"),
+            vec![contract],
+        );
+        let history = DemandHistory::new();
+        let inputs = LedgerInputs {
+            load_kwh_by_hour: &LOAD,
+            prices: EnergyPrices {
+                dam: &[UsdPerMwh::new(10.0)],
+                real_time: &RT,
+            },
+            kw_by_interval: &KW,
+            month: YearMonth::new(2026, 3).expect("valid"),
+            history: &history,
+            coincident_kw: &[],
+        };
+        assert_eq!(
+            ledgers(&tariff, &inputs),
+            Err(TariffError::SeriesLengthMismatch { load: 2, prices: 1 })
+        );
+    }
 }

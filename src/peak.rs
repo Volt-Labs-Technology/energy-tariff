@@ -212,4 +212,28 @@ mod tests {
             TariffError::InvalidIntervalsPerYear(6)
         );
     }
+
+    #[test]
+    fn month_outside_one_to_twelve_is_refused() {
+        assert_eq!(
+            CoincidentPeakRule::new(4, fifteen(), vec![0], annual_ten(), PassThrough::Assumed)
+                .unwrap_err(),
+            TariffError::InvalidMonth(0)
+        );
+        assert_eq!(
+            CoincidentPeakRule::new(4, fifteen(), vec![13], annual_ten(), PassThrough::Assumed)
+                .unwrap_err(),
+            TariffError::InvalidMonth(13)
+        );
+    }
+
+    #[test]
+    fn rule_stores_the_intervals_months_and_rate() {
+        let built = rule(4, PassThrough::Confirmed);
+        assert_eq!(built.intervals_per_year(), 4);
+        assert_eq!(built.interval_minutes(), fifteen());
+        assert_eq!(built.months(), &[6, 7, 8, 9]);
+        assert_eq!(built.rate().value().to_string(), "10");
+        assert_eq!(built.pass_through(), PassThrough::Confirmed);
+    }
 }
