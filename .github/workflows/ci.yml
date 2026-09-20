@@ -19,7 +19,7 @@ jobs:
       - name: clippy
         run: cargo clippy --all-targets -- -W clippy::pedantic -D warnings
       - name: test
-        run: RUSTFLAGS=-D warnings cargo test --all
+        run: RUSTFLAGS="-D warnings" cargo test --all
       - name: crate metadata is complete
         run: |
           for field in description repository homepage documentation readme license keywords categories rust-version; do
