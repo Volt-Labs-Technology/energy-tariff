@@ -6,8 +6,8 @@ Run these locally before opening a pull request:
 
 ```sh
 cargo fmt --all -- --check
-cargo clippy --all-targets -- -D warnings
-cargo test --all
+cargo clippy --all-targets -- -W clippy::pedantic -D warnings
+RUSTFLAGS=-D warnings cargo test --all
 ```
 
 A warning is an error.
