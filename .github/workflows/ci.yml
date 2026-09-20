@@ -20,6 +20,8 @@ jobs:
         run: cargo clippy --all-targets -- -W clippy::pedantic -D warnings
       - name: test
         run: RUSTFLAGS="-D warnings" cargo test --all
+      - name: doc tests
+        run: RUSTFLAGS="-D warnings" cargo test --doc
       - name: src/ has no filesystem, network, or clock APIs
         run: |
           python3 - <<'PY'
@@ -109,6 +111,38 @@ jobs:
           # Do not match ordinary English "replace".
           if grep -E -n -- 'replace-me|\bREPLACE\b' Cargo.toml README.md; then
             echo "Cargo.toml or README.md still contains a template placeholder"
+            exit 1
+          fi
+      - name: README install lines match package name and version
+        run: |
+          name=$(awk '
+            $0 == "[package]" { in_pkg = 1; next }
+            /^\[/ { in_pkg = 0 }
+            in_pkg && $1 == "name" {
+              gsub(/"/, "", $3)
+              print $3
+              exit
+            }
+          ' Cargo.toml)
+          version=$(awk '
+            $0 == "[package]" { in_pkg = 1; next }
+            /^\[/ { in_pkg = 0 }
+            in_pkg && $1 == "version" {
+              gsub(/"/, "", $3)
+              print $3
+              exit
+            }
+          ' Cargo.toml)
+          if [ -z "${name}" ] || [ -z "${version}" ]; then
+            echo "could not read name and version from Cargo.toml"
+            exit 1
+          fi
+          if ! grep -Fq "cargo add ${name}" README.md; then
+            echo "README.md must contain: cargo add ${name}"
+            exit 1
+          fi
+          if ! grep -Fq "${name} = \"${version}\"" README.md; then
+            echo "README.md must contain: ${name} = \"${version}\""
             exit 1
           fi
       - name: cargo publish --dry-run

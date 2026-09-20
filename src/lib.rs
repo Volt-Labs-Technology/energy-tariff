@@ -6,6 +6,31 @@
 //!
 //! Parse with [`SiteTariff::from_json`] and [`SiteTariff::from_toml`]. Both
 //! encodings share one serde schema. File open is the caller's job.
+//!
+//! ```
+//! use energy_tariff::{SiteTariff, TariffError};
+//!
+//! fn load(toml: &str, json: &str) -> Result<SiteTariff, TariffError> {
+//!     let from_toml = SiteTariff::from_toml(toml)?;
+//!     let from_json = SiteTariff::from_json(json)?;
+//!     assert_eq!(from_toml, from_json);
+//!     Ok(from_toml)
+//! }
+//!
+//! # // SYNTHETIC. Not a real site.
+//! # let toml = concat!(
+//! #     "site = \"synthetic-readme\"\n\n",
+//! #     "[[contracts]]\n",
+//! #     "name = \"primary\"\n",
+//! #     "applies_to = \"site\"\n",
+//! #     "period = { start = \"2026-01-01\", end = \"2026-12-31\" }\n\n",
+//! #     "[[contracts.charges]]\n",
+//! #     "type = \"energy\"\n",
+//! #     "kind = \"dam_indexed\"\n",
+//! # );
+//! # let json = r#"{"site":"synthetic-readme","contracts":[{"name":"primary","applies_to":"site","period":{"start":"2026-01-01","end":"2026-12-31"},"charges":[{"type":"energy","kind":"dam_indexed"}]}]}"#;
+//! # load(toml, json).expect("SYNTHETIC");
+//! ```
 
 mod contract;
 mod demand;
