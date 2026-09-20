@@ -29,5 +29,13 @@ jobs:
             fi
           done
           cargo package --no-verify
+      - name: crate metadata has no REPLACE placeholders
+        run: |
+          # Template tokens only (REPLACE, REPLACE:, replace-me, REPLACE-crate-name).
+          # Do not match ordinary English "replace".
+          if grep -E -n -- 'replace-me|\bREPLACE\b' Cargo.toml README.md; then
+            echo "Cargo.toml or README.md still contains a template placeholder"
+            exit 1
+          fi
       - name: cargo publish --dry-run
         run: cargo publish --dry-run
