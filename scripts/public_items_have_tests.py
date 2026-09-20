@@ -6,10 +6,11 @@ Walks src/**/*.rs and collects (Type, fn) pairs from inherent impls
 Names are not unique-collapsed across types: Ratchet::new does not cover
 Usd::new.
 
-A test covers Type::name when comment-free test text contains `Type::name`,
-or when a #[test] function calls `.name(` and also mentions Type. A comment
-containing `foo()` does not cover `foo`. Free functions need `name(` in
-comment-free test text.
+A test covers Type::name only when comment-free test text contains the
+substring `Type::name`. `.name(` plus a mention of Type is not enough:
+`Usd::new` and `window.get()` do not cover `Usd::get`. A comment containing
+`foo()` does not cover `foo`. Free functions need `name(` in comment-free
+test text.
 
 Run from anywhere; paths are relative to the repo root.
 
@@ -26,7 +27,6 @@ PUB_FN = re.compile(r"^\s*pub\s+(?:const\s+)?fn\s+(\w+)")
 INHERENT_IMPL = re.compile(
     r"^\s*impl(?:<[^>]*>)?\s+(\w+)\s*(?:<[^>]*>)?\s*\{"
 )
-TYPE_WORD = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -138,75 +138,19 @@ def public_items(production_lines):
     return items
 
 
-def consume_block(lines, start):
-    """(joined text, index after) for the brace block that starts at or after start."""
-    i = start
-    depth = 0
-    opened = False
-    block = []
-    while i < len(lines):
-        line = lines[i]
-        block.append(line)
-        if "{" in line:
-            opened = True
-        depth += line.count("{") - line.count("}")
-        i += 1
-        if opened and depth <= 0:
-            return "\n".join(block), i
-    return "\n".join(block), i
-
-
-def test_function_bodies(test_text):
-    """Bodies of `#[test]` functions in already comment-stripped test text."""
-    lines = test_text.splitlines()
-    bodies = []
-    i = 0
-    while i < len(lines):
-        if lines[i].lstrip() != "#[test]":
-            i += 1
-            continue
-        i += 1
-        while i < len(lines):
-            stripped = lines[i].lstrip()
-            if stripped == "" or stripped.startswith("#["):
-                i += 1
-                continue
-            break
-        if i >= len(lines):
-            break
-        body, i = consume_block(lines, i)
-        bodies.append(body)
-    return bodies
-
-
-def mentions_type(text, type_name):
-    """True when `type_name` appears as a whole identifier."""
-    for word in TYPE_WORD.findall(text):
-        if word == type_name:
-            return True
-    return False
-
-
-def is_covered(type_name, fn_name, test_text, test_fns):
+def is_covered(type_name, fn_name, test_text):
     """Whether comment-free tests exercise this (Type, fn) pair."""
     if type_name is None:
         return f"{fn_name}(" in test_text
-    if f"{type_name}::{fn_name}" in test_text:
-        return True
-    call = f".{fn_name}("
-    for body in test_fns:
-        if call in body and mentions_type(body, type_name):
-            return True
-    return False
+    return f"{type_name}::{fn_name}" in test_text
 
 
 def uncovered(items, test_text):
     """(Type, fn) pairs that tests do not cover."""
     code = strip_comments(test_text)
-    test_fns = test_function_bodies(code)
     missing = []
     for type_name, fn_name in items:
-        if not is_covered(type_name, fn_name, code, test_fns):
+        if not is_covered(type_name, fn_name, code):
             missing.append((type_name, fn_name))
     return missing
 
@@ -300,33 +244,35 @@ def run_selftest():
             "#[cfg(test)]",
             "mod tests {",
             "    #[test]",
-            "    fn usd_get_via_method() {",
+            "    fn usd_new_and_window_get() {",
             "        let amount = Usd::new(1.0);",
-            "        let _ = amount.get();",
-            "    }",
-            "}",
-        ]
-    )
-    missing = uncovered(both_items, method_call)
-    if ("Usd", "get") in missing:
-        return fail_selftest(".get( in a test that mentions Usd must cover Usd::get")
-    if ("Usd", "new") in missing:
-        return fail_selftest("Usd::new in a test must cover Usd::new")
-
-    other_get = "\n".join(
-        [
-            "#[cfg(test)]",
-            "mod tests {",
-            "    #[test]",
-            "    fn window_get_is_not_usd_get() {",
             "        let _ = window.get();",
             "    }",
             "}",
         ]
     )
-    missing = uncovered(both_items, other_get)
+    missing = uncovered(both_items, method_call)
     if ("Usd", "get") not in missing:
-        return fail_selftest(".get( without mentioning Usd must not cover Usd::get")
+        return fail_selftest("Usd::new and window.get() must not cover Usd::get")
+    if ("Usd", "new") in missing:
+        return fail_selftest("Usd::new in a test must cover Usd::new")
+
+    ufcs_get = "\n".join(
+        [
+            "#[cfg(test)]",
+            "mod tests {",
+            "    #[test]",
+            "    fn usd_get_via_ufcs() {",
+            "        let _ = Usd::get(Usd::new(1.0));",
+            "    }",
+            "}",
+        ]
+    )
+    missing = uncovered(both_items, ufcs_get)
+    if ("Usd", "get") in missing:
+        return fail_selftest("Usd::get(...) must cover Usd::get")
+    if ("Usd", "new") in missing:
+        return fail_selftest("Usd::new in a test must cover Usd::new")
 
     commented_out_fn = "\n".join(
         [
@@ -372,10 +318,7 @@ def main():
 
     missing = scan_src(src)
     if missing:
-        print(
-            "public functions must appear in #[cfg(test)] as Type::name, "
-            "or .name( in a #[test] whose body mentions Type"
-        )
+        print("public functions must appear in #[cfg(test)] as Type::name")
         for type_name, fn_name in missing:
             print(item_label(type_name, fn_name))
         return 1

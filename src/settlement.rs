@@ -138,7 +138,7 @@ mod tests {
     #[test]
     fn hedged_rate_flat_returns_the_stored_price() {
         let hedged = HedgedRate::new(45.0).expect("valid flat");
-        assert_eq!(hedged.flat(), UsdPerMwh::new(45.0));
+        assert_eq!(HedgedRate::flat(hedged), UsdPerMwh::new(45.0));
     }
 
     #[test]

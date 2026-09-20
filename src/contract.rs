@@ -617,50 +617,46 @@ mod tests {
 
     #[test]
     fn usd_get_returns_the_inner_amount() {
-        let amount = Usd::new(1.0);
-        assert_eq!(amount.get().to_string(), "1");
+        assert_eq!(Usd::get(Usd::new(30.0)).to_string(), "30");
     }
 
     #[test]
     fn kilowatt_get_returns_the_inner_demand() {
-        let demand = Kilowatt::new(1.0);
-        assert_eq!(demand.get().to_string(), "1");
+        assert_eq!(Kilowatt::get(Kilowatt::new(1.0)).to_string(), "1");
     }
 
     #[test]
     fn kilowatt_hour_get_returns_the_inner_energy() {
-        let energy = KilowattHour::new(1.0);
-        assert_eq!(energy.get().to_string(), "1");
+        assert_eq!(KilowattHour::get(KilowattHour::new(1.0)).to_string(), "1");
     }
 
     #[test]
     fn usd_per_mwh_get_returns_the_inner_price() {
-        let price = UsdPerMwh::new(1.0);
-        assert_eq!(price.get().to_string(), "1");
+        assert_eq!(UsdPerMwh::get(UsdPerMwh::new(1.0)).to_string(), "1");
     }
 
     #[test]
     fn minutes_get_returns_the_inner_count() {
         let window = Minutes::demand_window(15).expect("15 is legal");
-        assert_eq!(window.get(), 15);
+        assert_eq!(Minutes::get(window), 15);
     }
 
     #[test]
     fn charge_name_get_returns_the_inner_text() {
         let name = ChargeName::new("primary:energy".to_owned());
-        assert_eq!(name.get(), "primary:energy");
+        assert_eq!(ChargeName::get(&name), "primary:energy");
     }
 
     #[test]
     fn fixed_charge_amount_returns_the_stored_dollars() {
         let charge = FixedCharge::new(7.0).expect("valid");
-        assert_eq!(charge.amount(), Usd::new(7.0));
+        assert_eq!(FixedCharge::amount(&charge), Usd::new(7.0));
     }
 
     #[test]
     fn site_alias_accepts_hyphenated_lowercase() {
         let alias = SiteAlias::parse("synthetic-4cp").expect("fixture alias");
-        assert_eq!(alias.get(), "synthetic-4cp");
+        assert_eq!(SiteAlias::get(&alias), "synthetic-4cp");
     }
 
     #[test]
@@ -690,9 +686,9 @@ mod tests {
     #[test]
     fn year_month_pred_crosses_january() {
         let jan = YearMonth::new(2026, 1).expect("valid");
-        let dec = jan.pred();
-        assert_eq!(dec.year(), 2025);
-        assert_eq!(dec.month(), 12);
+        let dec = YearMonth::pred(jan);
+        assert_eq!(YearMonth::year(dec), 2025);
+        assert_eq!(YearMonth::month(dec), 12);
     }
 
     #[test]
@@ -708,14 +704,14 @@ mod tests {
     fn time_of_use_refuses_hour_24() {
         assert_eq!(TimeOfUse::new(0, 24), Err(TariffError::InvalidHour(24)));
         let window = TimeOfUse::new(7, 19).expect("valid");
-        assert_eq!(window.start_hour(), 7);
-        assert_eq!(window.end_hour(), 19);
+        assert_eq!(TimeOfUse::start_hour(window), 7);
+        assert_eq!(TimeOfUse::end_hour(window), 19);
     }
 
     #[test]
     fn calendar_date_parses_iso_and_refuses_garbage() {
         let date = CalendarDate::parse("2026-01-01").expect("iso");
-        assert_eq!(date.to_iso(), "2026-01-01");
+        assert_eq!(CalendarDate::to_iso(date), "2026-01-01");
         assert!(CalendarDate::parse("2026/01/01").is_err());
     }
 
@@ -784,11 +780,11 @@ mod tests {
             false,
         )
         .expect("valid");
-        assert_eq!(rate.value().to_string(), "1");
-        assert_eq!(rate.unit(), RateUnit::UsdPerKwMonth);
-        assert_eq!(rate.source(), "SYNTHETIC ESTIMATE");
-        assert_eq!(rate.dated(), dated);
-        assert!(!rate.verified());
+        assert_eq!(RateWithSource::value(&rate).to_string(), "1");
+        assert_eq!(RateWithSource::unit(&rate), RateUnit::UsdPerKwMonth);
+        assert_eq!(RateWithSource::source(&rate), "SYNTHETIC ESTIMATE");
+        assert_eq!(RateWithSource::dated(&rate), dated);
+        assert!(!RateWithSource::verified(&rate));
     }
 
     #[test]
@@ -803,16 +799,16 @@ mod tests {
             vec![],
         )
         .expect("valid");
-        assert_eq!(contract.name(), "primary");
-        assert_eq!(contract.applies_to().get(), "site");
-        assert_eq!(contract.period().start(), start);
-        assert_eq!(contract.period().end(), end);
-        assert!(contract.charges().is_empty());
+        assert_eq!(Contract::name(&contract), "primary");
+        assert_eq!(MeterScope::get(Contract::applies_to(&contract)), "site");
+        assert_eq!(DateRange::start(Contract::period(&contract)), start);
+        assert_eq!(DateRange::end(Contract::period(&contract)), end);
+        assert!(Contract::charges(&contract).is_empty());
         let tariff = SiteTariff::new(
             SiteAlias::parse("synthetic-hold").expect("alias"),
             vec![contract],
         );
-        assert_eq!(tariff.site().get(), "synthetic-hold");
-        assert_eq!(tariff.contracts().len(), 1);
+        assert_eq!(SiteAlias::get(SiteTariff::site(&tariff)), "synthetic-hold");
+        assert_eq!(SiteTariff::contracts(&tariff).len(), 1);
     }
 }

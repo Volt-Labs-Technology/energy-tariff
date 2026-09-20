@@ -228,10 +228,13 @@ mod tests {
         let hours = TimeOfUse::new(7, 19).expect("valid");
         let charge = DemandCharge::new(ten_dollars_per_kw_month(), window_15(), None, Some(hours))
             .expect("constructor accepts time-of-use");
-        assert_eq!(charge.hours(), Some(hours));
-        assert_eq!(charge.window().get(), 15);
-        assert_eq!(charge.ratchet(), None);
-        assert_eq!(charge.rate().value().to_string(), "10");
+        assert_eq!(DemandCharge::hours(&charge), Some(hours));
+        assert_eq!(Minutes::get(DemandCharge::window(&charge)), 15);
+        assert_eq!(DemandCharge::ratchet(&charge), None);
+        assert_eq!(
+            RateWithSource::value(DemandCharge::rate(&charge)).to_string(),
+            "10"
+        );
         let month = YearMonth::new(2026, 3).expect("valid");
         let bill = demand_bill(
             &charge,
@@ -248,13 +251,14 @@ mod tests {
     fn max_peak_before_reads_the_lookback_months() {
         let march = YearMonth::new(2026, 3).expect("valid");
         let february = YearMonth::new(2026, 2).expect("valid");
-        let history = DemandHistory::new().with_peak(february, Kilowatt::new(200.0));
+        let history =
+            DemandHistory::with_peak(DemandHistory::new(), february, Kilowatt::new(200.0));
         assert_eq!(
-            Kilowatt::new(history.max_peak_before(march, 1)),
+            Kilowatt::new(DemandHistory::max_peak_before(&history, march, 1)),
             Kilowatt::new(200.0)
         );
         assert_eq!(
-            Kilowatt::new(history.max_peak_before(march, 0)),
+            Kilowatt::new(DemandHistory::max_peak_before(&history, march, 0)),
             Kilowatt::new(0.0)
         );
     }
@@ -262,13 +266,13 @@ mod tests {
     #[test]
     fn ratchet_pct_returns_the_stored_percent() {
         let ratchet = Ratchet::new(80.0, 1).expect("80% of 1 month");
-        assert_eq!(ratchet.pct().to_string(), "80");
+        assert_eq!(Ratchet::pct(ratchet).to_string(), "80");
     }
 
     #[test]
     fn ratchet_months_returns_the_stored_lookback() {
         let ratchet = Ratchet::new(80.0, 1).expect("80% of 1 month");
-        assert_eq!(ratchet.months(), 1);
+        assert_eq!(Ratchet::months(ratchet), 1);
     }
 
     #[test]
