@@ -1,7 +1,7 @@
 //! Monthly demand charges, with an optional ratchet.
 
 use crate::TariffError;
-use crate::contract::{Kilowatt, Minutes, RateWithSource, TimeOfUse, Usd, YearMonth};
+use crate::contract::{Charge, Kilowatt, Minutes, RateWithSource, TimeOfUse, Usd, YearMonth};
 use std::collections::BTreeMap;
 
 /// Lookback that floors billed kW at a percentage of recent peaks.
@@ -270,6 +270,31 @@ pub fn demand_bill(
     history: &DemandHistory,
 ) -> Usd {
     demand_charge(charge, kw_by_interval, month, history).charge()
+}
+
+/// `ratcheted_kilowatts(charges, kw_by_interval, month, history)` is the greatest
+/// billed demand kilowatts among `charges`.
+///
+/// Zero when `charges` lists no [`Charge::Demand`]. **Calculation.**
+#[must_use]
+pub(crate) fn ratcheted_kilowatts(
+    charges: &[Charge],
+    kw_by_interval: &[Kilowatt],
+    month: YearMonth,
+    history: &DemandHistory,
+) -> Kilowatt {
+    let kilowatts = charges
+        .iter()
+        .filter_map(|charge| match charge {
+            Charge::Demand(demand) => Some(
+                demand_charge(demand, kw_by_interval, month, history)
+                    .billed_kw()
+                    .get(),
+            ),
+            _ => None,
+        })
+        .fold(0.0, f64::max);
+    Kilowatt::new(kilowatts)
 }
 
 /// `marginal_demand_value(interval_mean_kw, running_peak_kw, month, history, charge)`

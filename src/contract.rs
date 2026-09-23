@@ -1,7 +1,7 @@
 //! Contract data: a site, its contracts, and the charges each contract lists.
 
 use crate::demand::DemandCharge;
-use crate::facilities::FacilitiesCharge;
+use crate::facilities::{FacilitiesBasis, FacilitiesCharge};
 use crate::peak::CoincidentPeakRule;
 use crate::settlement::Settlement;
 use crate::{TariffError, require_non_negative_finite};
@@ -543,7 +543,10 @@ impl Contract {
     /// **Calculation.**
     ///
     /// # Errors
-    /// [`TariffError::EmptyContractName`].
+    /// [`TariffError::EmptyContractName`], or
+    /// [`TariffError::RatchetedPeakWithoutDemand`] when a facilities charge
+    /// uses [`FacilitiesBasis::RatchetedPeak`] and `charges` has no
+    /// [`Charge::Demand`].
     pub fn new(
         name: impl Into<String>,
         applies_to: MeterScope,
@@ -553,6 +556,9 @@ impl Contract {
         let name = name.into();
         if name.is_empty() {
             return Err(TariffError::EmptyContractName);
+        }
+        if ratcheted_peak_without_demand(&charges) {
+            return Err(TariffError::RatchetedPeakWithoutDemand);
         }
         Ok(Self {
             name,
@@ -585,6 +591,20 @@ impl Contract {
     pub fn charges(&self) -> &[Charge] {
         &self.charges
     }
+}
+
+fn ratcheted_peak_without_demand(charges: &[Charge]) -> bool {
+    let ratcheted = charges.iter().any(|charge| {
+        matches!(
+            charge,
+            Charge::Facilities(facilities)
+                if matches!(facilities.basis(), FacilitiesBasis::RatchetedPeak)
+        )
+    });
+    let demand = charges
+        .iter()
+        .any(|charge| matches!(charge, Charge::Demand(_)));
+    ratcheted && !demand
 }
 
 /// A site alias and the contracts that apply there.
@@ -729,6 +749,30 @@ mod tests {
         assert_eq!(
             Contract::new("", scope, period, vec![]).unwrap_err(),
             TariffError::EmptyContractName
+        );
+    }
+
+    #[test]
+    fn ratcheted_peak_facilities_without_a_demand_charge_is_refused() {
+        // SYNTHETIC. Not a real tariff.
+        use crate::facilities::{FacilitiesBasis, FacilitiesCharge};
+        let period = DateRange::new(
+            CalendarDate::new(2026, 1, 1).expect("valid"),
+            CalendarDate::new(2026, 12, 31).expect("valid"),
+        )
+        .expect("valid");
+        let scope = MeterScope::new("site").expect("valid");
+        let facilities =
+            FacilitiesCharge::new(2.0, FacilitiesBasis::RatchetedPeak).expect("valid rate");
+        assert_eq!(
+            Contract::new(
+                "primary",
+                scope,
+                period,
+                vec![Charge::Facilities(facilities)]
+            )
+            .unwrap_err(),
+            TariffError::RatchetedPeakWithoutDemand
         );
     }
 
