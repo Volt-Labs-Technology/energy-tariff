@@ -2,9 +2,11 @@
 
 use crate::TariffError;
 use crate::contract::{Charge, ChargeName, Kilowatt, KilowattHour, SiteTariff, Usd, YearMonth};
-use crate::demand::{DemandHistory, demand_bill};
+use crate::demand::{DemandHistory, demand_charge};
+use crate::facilities::facilities_bill;
 use crate::peak::coincident_peak_exposure;
-use crate::settlement::{EnergyPrices, energy_bill};
+use crate::settlement::{EnergyPrices, energy_bill_local};
+use crate::tou::CivilMinute;
 
 /// Inputs every present charge may need. Unused fields are ignored.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -13,6 +15,9 @@ pub struct LedgerInputs<'a> {
     pub load_kwh_by_hour: &'a [KilowattHour],
     /// Day-ahead and real-time dollars-per-megawatt-hour series.
     pub prices: EnergyPrices<'a>,
+    /// Civil local time of each load hour. Ignored unless energy is time-of-use.
+    /// This crate does not convert UTC.
+    pub local: &'a [CivilMinute],
     /// This month's demand-window kW samples.
     pub kw_by_interval: &'a [Kilowatt],
     /// Billed month for demand.
@@ -44,13 +49,32 @@ pub fn ledgers(
 ) -> Result<Vec<(ChargeName, Usd)>, TariffError> {
     let mut entries = Vec::new();
     for contract in tariff.contracts() {
+        let ratcheted_kw = contract
+            .charges()
+            .iter()
+            .filter_map(|charge| match charge {
+                Charge::Demand(demand) => Some(
+                    demand_charge(demand, inputs.kw_by_interval, inputs.month, inputs.history)
+                        .billed_kw()
+                        .get(),
+                ),
+                _ => None,
+            })
+            .fold(0.0, f64::max);
         for charge in contract.charges() {
             let amount = match charge {
-                Charge::Energy(settlement) => {
-                    energy_bill(settlement, inputs.load_kwh_by_hour, &inputs.prices)?
-                }
+                Charge::Energy(settlement) => energy_bill_local(
+                    settlement,
+                    inputs.load_kwh_by_hour,
+                    inputs.local,
+                    &inputs.prices,
+                )?,
                 Charge::Demand(demand) => {
-                    demand_bill(demand, inputs.kw_by_interval, inputs.month, inputs.history)
+                    demand_charge(demand, inputs.kw_by_interval, inputs.month, inputs.history)
+                        .charge()
+                }
+                Charge::Facilities(facilities) => {
+                    facilities_bill(facilities, Kilowatt::new(ratcheted_kw))
                 }
                 Charge::CoincidentPeak(rule) => {
                     coincident_peak_exposure(rule, inputs.coincident_kw)?.amount()
@@ -60,6 +84,7 @@ pub fn ledgers(
             let kind = match charge {
                 Charge::Energy(_) => "energy",
                 Charge::Demand(_) => "demand",
+                Charge::Facilities(_) => "facilities",
                 Charge::CoincidentPeak(_) => "coincident_peak",
                 Charge::Fixed(_) => "fixed",
             };
@@ -115,6 +140,7 @@ mod tests {
                 dam: &DAM,
                 real_time: &RT,
             },
+            local: &[],
             kw_by_interval: &KW,
             month: YearMonth::new(2026, 3).expect("valid"),
             history,
@@ -258,6 +284,7 @@ mod tests {
                 dam: &[UsdPerMwh::new(10.0)],
                 real_time: &RT,
             },
+            local: &[],
             kw_by_interval: &KW,
             month: YearMonth::new(2026, 3).expect("valid"),
             history: &history,

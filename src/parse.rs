@@ -2,12 +2,14 @@
 
 use crate::TariffError;
 use crate::contract::{
-    CalendarDate, Charge, Contract, DateRange, FixedCharge, MeterScope, Minutes, PassThrough,
-    RateUnit, RateWithSource, SiteAlias, SiteTariff, TimeOfUse,
+    CalendarDate, Charge, Contract, DateRange, FixedCharge, Kilowatt, MeterScope, Minutes,
+    PassThrough, RateUnit, RateWithSource, SiteAlias, SiteTariff, TimeOfUse,
 };
 use crate::demand::{DemandCharge, Ratchet};
+use crate::facilities::{FacilitiesBasis, FacilitiesCharge};
 use crate::peak::CoincidentPeakRule;
-use crate::settlement::{HedgedRate, Settlement};
+use crate::settlement::{EnergyAdder, HedgedRate, Settlement, is_zero};
+use crate::tou::{TouPeriod, TouSchedule};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 impl SiteTariff {
@@ -106,6 +108,12 @@ enum WireCharge {
     Fixed {
         amount: f64,
     },
+    Facilities {
+        rate_per_kw: f64,
+        basis: WireFacilitiesBasis,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        contract_kw: Option<f64>,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -114,6 +122,26 @@ enum WireSettlement {
     DamIndexed,
     RealTime,
     Hedged { flat: f64 },
+    DamIndexedAdder { adder: f64 },
+    RealTimeAdder { adder: f64 },
+    Tou { periods: Vec<WireTouPeriod> },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct WireTouPeriod {
+    name: String,
+    months: Vec<u8>,
+    weekdays: Vec<u8>,
+    start_min: u16,
+    end_min: u16,
+    rate: f64,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum WireFacilitiesBasis {
+    ContractKw,
+    RatchetedPeak,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -202,6 +230,19 @@ impl From<&Charge> for WireCharge {
             Charge::Fixed(fixed) => Self::Fixed {
                 amount: fixed.amount().get(),
             },
+            Charge::Facilities(facilities) => {
+                let (basis, contract_kw) = match facilities.basis() {
+                    FacilitiesBasis::ContractKw { contract_kw } => {
+                        (WireFacilitiesBasis::ContractKw, Some(contract_kw.get()))
+                    }
+                    FacilitiesBasis::RatchetedPeak => (WireFacilitiesBasis::RatchetedPeak, None),
+                };
+                Self::Facilities {
+                    rate_per_kw: facilities.rate_per_kw(),
+                    basis,
+                    contract_kw,
+                }
+            }
         }
     }
 }
@@ -214,6 +255,28 @@ impl From<&Settlement> for WireSettlement {
             Settlement::Hedged(hedged) => Self::Hedged {
                 flat: hedged.flat().get(),
             },
+            Settlement::DamIndexedAdder(adder) => Self::DamIndexedAdder {
+                adder: adder.get().get(),
+            },
+            Settlement::RealTimeAdder(adder) => Self::RealTimeAdder {
+                adder: adder.get().get(),
+            },
+            Settlement::Tou(schedule) => Self::Tou {
+                periods: schedule.periods().iter().map(WireTouPeriod::from).collect(),
+            },
+        }
+    }
+}
+
+impl From<&TouPeriod> for WireTouPeriod {
+    fn from(period: &TouPeriod) -> Self {
+        Self {
+            name: period.name().to_owned(),
+            months: period.months().to_vec(),
+            weekdays: period.weekdays().to_vec(),
+            start_min: period.start_min(),
+            end_min: period.end_min(),
+            rate: period.rate().get(),
         }
     }
 }
@@ -338,6 +401,27 @@ impl TryFrom<WireCharge> for Charge {
                 Ok(Self::CoincidentPeak(rule))
             }
             WireCharge::Fixed { amount } => Ok(Self::Fixed(FixedCharge::new(amount)?)),
+            WireCharge::Facilities {
+                rate_per_kw,
+                basis,
+                contract_kw,
+            } => {
+                let basis = match (basis, contract_kw) {
+                    (WireFacilitiesBasis::ContractKw, Some(kilowatts)) => {
+                        FacilitiesBasis::ContractKw {
+                            contract_kw: Kilowatt::new(kilowatts),
+                        }
+                    }
+                    (WireFacilitiesBasis::ContractKw, None) => {
+                        return Err(TariffError::MissingContractKw);
+                    }
+                    (WireFacilitiesBasis::RatchetedPeak, None) => FacilitiesBasis::RatchetedPeak,
+                    (WireFacilitiesBasis::RatchetedPeak, Some(_)) => {
+                        return Err(TariffError::UnexpectedContractKw);
+                    }
+                };
+                Ok(Self::Facilities(FacilitiesCharge::new(rate_per_kw, basis)?))
+            }
         }
     }
 }
@@ -350,7 +434,37 @@ impl TryFrom<WireSettlement> for Settlement {
             WireSettlement::DamIndexed => Ok(Self::DamIndexed),
             WireSettlement::RealTime => Ok(Self::RealTime),
             WireSettlement::Hedged { flat } => Ok(Self::Hedged(HedgedRate::new(flat)?)),
+            WireSettlement::DamIndexedAdder { adder } if is_zero(adder) => Ok(Self::DamIndexed),
+            WireSettlement::RealTimeAdder { adder } if is_zero(adder) => Ok(Self::RealTime),
+            WireSettlement::DamIndexedAdder { adder } => {
+                Ok(Self::DamIndexedAdder(EnergyAdder::new(adder)?))
+            }
+            WireSettlement::RealTimeAdder { adder } => {
+                Ok(Self::RealTimeAdder(EnergyAdder::new(adder)?))
+            }
+            WireSettlement::Tou { periods } => {
+                let periods = periods
+                    .into_iter()
+                    .map(TouPeriod::try_from)
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(Self::Tou(TouSchedule::new(periods)?))
+            }
         }
+    }
+}
+
+impl TryFrom<WireTouPeriod> for TouPeriod {
+    type Error = TariffError;
+
+    fn try_from(wire: WireTouPeriod) -> Result<Self, Self::Error> {
+        Self::new(
+            wire.name,
+            wire.months,
+            wire.weekdays,
+            wire.start_min,
+            wire.end_min,
+            wire.rate,
+        )
     }
 }
 
@@ -432,6 +546,7 @@ mod tests {
                 dam: &DAM,
                 real_time: &RT,
             },
+            local: &[],
             kw_by_interval: &KW,
             month: YearMonth::new(2026, 3).expect("valid"),
             history,
@@ -446,6 +561,7 @@ mod tests {
                 dam: &DAM,
                 real_time: &RT,
             },
+            local: &[],
             kw_by_interval: &KW,
             month: YearMonth::new(2026, 3).expect("valid"),
             history,
@@ -545,5 +661,72 @@ rate = { value = 10.0, unit = "usd_per_kw_month", source = "SYNTHETIC ESTIMATE",
         let err = SiteTariff::from_toml(text).expect_err("bad window");
         assert!(matches!(err, TariffError::Toml(_)), "got {err:?}");
         assert!(err.to_string().contains("15 or 30"), "got {err}");
+    }
+
+    fn shell(charge: &str) -> String {
+        format!(
+            "site = \"synthetic-shell\"\n\n[[contracts]]\nname = \"primary\"\napplies_to = \"site\"\nperiod = {{ start = \"2026-01-01\", end = \"2026-12-31\" }}\n\n{charge}"
+        )
+    }
+
+    #[test]
+    fn a_zero_adder_round_trips_as_the_unit_variant() {
+        let text = shell(
+            "[[contracts.charges]]\ntype = \"energy\"\nkind = \"dam_indexed_adder\"\nadder = 0.0\n",
+        );
+        let tariff = SiteTariff::from_toml(&text).expect("zero adder");
+        assert!(matches!(
+            tariff.contracts()[0].charges()[0],
+            Charge::Energy(Settlement::DamIndexed)
+        ));
+        let encoded = SiteTariff::to_toml(&tariff).expect("encode");
+        assert!(encoded.contains("dam_indexed"));
+        assert!(!encoded.contains("dam_indexed_adder"));
+        let again = SiteTariff::from_toml(&encoded).expect("unit variant");
+        assert_eq!(tariff, again);
+    }
+
+    #[test]
+    fn a_non_zero_adder_round_trips() {
+        let text = shell(
+            "[[contracts.charges]]\ntype = \"energy\"\nkind = \"real_time_adder\"\nadder = 5.0\n",
+        );
+        let tariff = SiteTariff::from_toml(&text).expect("adder");
+        let encoded = SiteTariff::to_toml(&tariff).expect("encode");
+        let again = SiteTariff::from_toml(&encoded).expect("decode");
+        assert_eq!(tariff, again);
+        assert!(encoded.contains("real_time_adder"));
+    }
+
+    #[test]
+    fn facilities_contract_kw_and_ratcheted_peak_round_trip() {
+        let contract_kw = shell(
+            "[[contracts.charges]]\ntype = \"facilities\"\nrate_per_kw = 2.0\nbasis = \"contract_kw\"\ncontract_kw = 50.0\n",
+        );
+        let tariff = SiteTariff::from_toml(&contract_kw).expect("facilities");
+        let again =
+            SiteTariff::from_toml(&SiteTariff::to_toml(&tariff).expect("encode")).expect("decode");
+        assert_eq!(tariff, again);
+        let ratcheted = shell(
+            "[[contracts.charges]]\ntype = \"facilities\"\nrate_per_kw = 2.0\nbasis = \"ratcheted_peak\"\n",
+        );
+        let tariff = SiteTariff::from_toml(&ratcheted).expect("ratcheted");
+        let again =
+            SiteTariff::from_toml(&SiteTariff::to_toml(&tariff).expect("encode")).expect("decode");
+        assert_eq!(tariff, again);
+    }
+
+    #[test]
+    fn facilities_basis_fields_are_refused_when_they_do_not_match() {
+        let missing = shell(
+            "[[contracts.charges]]\ntype = \"facilities\"\nrate_per_kw = 2.0\nbasis = \"contract_kw\"\n",
+        );
+        let err = SiteTariff::from_toml(&missing).expect_err("missing contract_kw");
+        assert!(err.to_string().contains("contract_kw"), "got {err}");
+        let extra = shell(
+            "[[contracts.charges]]\ntype = \"facilities\"\nrate_per_kw = 2.0\nbasis = \"ratcheted_peak\"\ncontract_kw = 50.0\n",
+        );
+        let err = SiteTariff::from_toml(&extra).expect_err("unexpected contract_kw");
+        assert!(err.to_string().contains("ratcheted_peak"), "got {err}");
     }
 }

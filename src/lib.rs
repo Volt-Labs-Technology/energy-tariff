@@ -34,22 +34,33 @@
 
 #![deny(missing_docs)]
 
+mod bill;
 mod contract;
 mod demand;
+mod facilities;
 mod ledgers;
 mod parse;
 mod peak;
 mod settlement;
+mod tou;
 
+pub use bill::{MonthBill, MonthInputs, month_bill};
 pub use contract::{
     CalendarDate, Charge, ChargeName, DateRange, FixedCharge, Kilowatt, KilowattHour, MeterScope,
     Minutes, PassThrough, RateUnit, RateWithSource, SiteAlias, SiteTariff, TimeOfUse, Usd,
     UsdPerMwh, YearMonth,
 };
-pub use demand::{DemandCharge, DemandHistory, Ratchet, demand_bill};
+pub use demand::{
+    DemandCharge, DemandHistory, DemandResult, Ratchet, demand_bill, demand_charge,
+    marginal_demand_value,
+};
+pub use facilities::{FacilitiesBasis, FacilitiesCharge, facilities_bill};
 pub use ledgers::{LedgerInputs, ledgers};
 pub use peak::{CoincidentPeakRule, PeakExposure, coincident_peak_exposure};
-pub use settlement::{EnergyPrices, HedgedRate, Settlement, energy_bill};
+pub use settlement::{
+    EnergyAdder, EnergyPrices, HedgedRate, Settlement, energy_bill, energy_bill_local,
+};
+pub use tou::{CivilMinute, TouPeriod, TouSchedule};
 
 /// Why a constructor, parse, or calculation refused its input.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -104,6 +115,70 @@ pub enum TariffError {
     /// Hour-of-day outside 0..=23.
     #[error("time-of-use hour {0} is not in 0..=23")]
     InvalidHour(u8),
+    /// Minute of day outside the legal window.
+    #[error("minute {0} is outside 0..1440 (end may be 1440)")]
+    InvalidMinute(u16),
+    /// ISO weekday outside 1..=7.
+    #[error("ISO weekday {0} is not in 1..=7")]
+    InvalidWeekday(u8),
+    /// Time-of-use period with no name.
+    #[error("a time-of-use period name cannot be empty")]
+    EmptyTouName,
+    /// Time-of-use period that names no month.
+    #[error("a time-of-use period has no months")]
+    EmptyTouMonths,
+    /// Time-of-use period that names no weekday.
+    #[error("a time-of-use period has no weekdays")]
+    EmptyTouWeekdays,
+    /// The same month listed twice in one period.
+    #[error("duplicate month {0} in a time-of-use period")]
+    DuplicateTouMonth(u8),
+    /// The same weekday listed twice in one period.
+    #[error("duplicate weekday {0} in a time-of-use period")]
+    DuplicateTouWeekday(u8),
+    /// `start_min >= end_min`, so the window contains no minute.
+    #[error("time-of-use window is empty")]
+    EmptyTouWindow,
+    /// Schedule with no periods.
+    #[error("time-of-use schedule has no periods")]
+    EmptyTouSchedule,
+    /// Two periods cover the same local minute.
+    #[error("time-of-use periods `{first}` and `{second}` overlap")]
+    OverlappingTouPeriods {
+        /// Name of the earlier period.
+        first: String,
+        /// Name of the later period.
+        second: String,
+    },
+    /// Civil time fell in no period.
+    #[error("civil time matches no time-of-use period")]
+    UnmatchedCivilTime,
+    /// Load hour fell in no period.
+    #[error("time-of-use interval {index} matches no period")]
+    UnmatchedTouInterval {
+        /// Index into the load slice.
+        index: usize,
+    },
+    /// Load hours and civil times have different lengths.
+    #[error("load length {load} does not match civil-time length {local}")]
+    CivilTimeLengthMismatch {
+        /// Length of the load series.
+        load: usize,
+        /// Length of the civil-time series.
+        local: usize,
+    },
+    /// Time-of-use settlement billed without civil time.
+    #[error("time-of-use energy needs civil local time")]
+    MissingCivilTime,
+    /// Adder of zero is the unit settlement, not an adder variant.
+    #[error("an energy adder of zero is the unit settlement, not an adder")]
+    ZeroAdder,
+    /// `contract_kw` basis without a quantity.
+    #[error("facilities basis contract_kw needs contract_kw")]
+    MissingContractKw,
+    /// `ratcheted_peak` basis that also carries a contract quantity.
+    #[error("facilities basis ratcheted_peak does not take contract_kw")]
+    UnexpectedContractKw,
     /// Supplied coincident-peak kW count does not match the rule.
     #[error("coincident-peak intervals: expected {expected}, got {got}")]
     IntervalCountMismatch {

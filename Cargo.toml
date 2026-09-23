@@ -1,10 +1,10 @@
 [package]
 name = "energy-tariff"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.98"
 license = "MIT"
-description = "Types and calculations for a site's electricity contracts: energy settlement, demand charges with ratchets, coincident-peak charges. The tariff is data; the crate computes each charge that is present. Pure, no I/O."
+description = "Types and calculations for a site's electricity contracts: energy settlement including time-of-use, demand charges with ratchets, facilities charges, coincident-peak charges. The tariff is data; the crate computes each charge that is present. Pure, no I/O."
 repository = "https://github.com/Volt-Labs-Technology/energy-tariff"
 homepage = "https://github.com/Volt-Labs-Technology/energy-tariff"
 documentation = "https://docs.rs/energy-tariff"

@@ -1,6 +1,7 @@
 //! Contract data: a site, its contracts, and the charges each contract lists.
 
 use crate::demand::DemandCharge;
+use crate::facilities::FacilitiesCharge;
 use crate::peak::CoincidentPeakRule;
 use crate::settlement::Settlement;
 use crate::{TariffError, require_non_negative_finite};
@@ -494,10 +495,12 @@ impl FixedCharge {
 /// One present charge on a contract.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Charge {
-    /// Energy settlement: DAM-indexed, real-time, or hedged flat.
+    /// Energy settlement: DAM-indexed, real-time, hedged, an adder, or time-of-use.
     Energy(Settlement),
     /// Monthly demand charge, optional ratchet and time-of-use.
     Demand(DemandCharge),
+    /// Facilities charge, dollars per kilowatt.
+    Facilities(FacilitiesCharge),
     /// Coincident-peak rule, 4 or 12 intervals per year.
     CoincidentPeak(CoincidentPeakRule),
     /// Fixed amount, reported only.
