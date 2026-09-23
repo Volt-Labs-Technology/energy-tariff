@@ -2,7 +2,7 @@
 
 use crate::TariffError;
 use crate::contract::{Charge, ChargeName, Kilowatt, KilowattHour, SiteTariff, Usd, YearMonth};
-use crate::demand::{DemandHistory, demand_charge};
+use crate::demand::{DemandHistory, demand_charge, ratcheted_kilowatts};
 use crate::facilities::facilities_bill;
 use crate::peak::coincident_peak_exposure;
 use crate::settlement::{EnergyPrices, energy_bill_local};
@@ -37,7 +37,9 @@ pub struct LedgerInputs<'a> {
 /// **Calculation.**
 ///
 /// # Errors
-/// [`TariffError::SeriesLengthMismatch`] or [`TariffError::IntervalCountMismatch`]
+/// [`TariffError::SeriesLengthMismatch`], [`TariffError::CivilTimeLengthMismatch`],
+/// [`TariffError::UnmatchedTouInterval`], [`TariffError::MissingCivilTime`],
+/// or [`TariffError::IntervalCountMismatch`]
 /// from the charge that needs those inputs.
 #[allow(
     clippy::module_name_repetitions,
@@ -49,18 +51,12 @@ pub fn ledgers(
 ) -> Result<Vec<(ChargeName, Usd)>, TariffError> {
     let mut entries = Vec::new();
     for contract in tariff.contracts() {
-        let ratcheted_kw = contract
-            .charges()
-            .iter()
-            .filter_map(|charge| match charge {
-                Charge::Demand(demand) => Some(
-                    demand_charge(demand, inputs.kw_by_interval, inputs.month, inputs.history)
-                        .billed_kw()
-                        .get(),
-                ),
-                _ => None,
-            })
-            .fold(0.0, f64::max);
+        let ratcheted_kw = ratcheted_kilowatts(
+            contract.charges(),
+            inputs.kw_by_interval,
+            inputs.month,
+            inputs.history,
+        );
         for charge in contract.charges() {
             let amount = match charge {
                 Charge::Energy(settlement) => energy_bill_local(
@@ -73,9 +69,7 @@ pub fn ledgers(
                     demand_charge(demand, inputs.kw_by_interval, inputs.month, inputs.history)
                         .charge()
                 }
-                Charge::Facilities(facilities) => {
-                    facilities_bill(facilities, Kilowatt::new(ratcheted_kw))
-                }
+                Charge::Facilities(facilities) => facilities_bill(facilities, ratcheted_kw),
                 Charge::CoincidentPeak(rule) => {
                     coincident_peak_exposure(rule, inputs.coincident_kw)?.amount()
                 }

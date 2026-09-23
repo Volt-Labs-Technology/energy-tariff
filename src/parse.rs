@@ -707,8 +707,9 @@ rate = { value = 10.0, unit = "usd_per_kw_month", source = "SYNTHETIC ESTIMATE",
         let again =
             SiteTariff::from_toml(&SiteTariff::to_toml(&tariff).expect("encode")).expect("decode");
         assert_eq!(tariff, again);
+        // A demand charge is required: ratcheted peak has nothing to multiply otherwise.
         let ratcheted = shell(
-            "[[contracts.charges]]\ntype = \"facilities\"\nrate_per_kw = 2.0\nbasis = \"ratcheted_peak\"\n",
+            "[[contracts.charges]]\ntype = \"demand\"\nwindow = 15\nrate = { value = 10.0, unit = \"usd_per_kw_month\", source = \"SYNTHETIC ESTIMATE\", dated = \"2026-01-01\", verified = false }\n\n[[contracts.charges]]\ntype = \"facilities\"\nrate_per_kw = 2.0\nbasis = \"ratcheted_peak\"\n",
         );
         let tariff = SiteTariff::from_toml(&ratcheted).expect("ratcheted");
         let again =
@@ -728,5 +729,81 @@ rate = { value = 10.0, unit = "usd_per_kw_month", source = "SYNTHETIC ESTIMATE",
         );
         let err = SiteTariff::from_toml(&extra).expect_err("unexpected contract_kw");
         assert!(err.to_string().contains("ratcheted_peak"), "got {err}");
+    }
+
+    #[test]
+    fn a_tou_settlement_round_trips() {
+        // SYNTHETIC. Not a real tariff. Two periods share no minute.
+        let text = shell(
+            "[[contracts.charges]]\n\
+             type = \"energy\"\n\
+             kind = \"tou\"\n\
+             [[contracts.charges.periods]]\n\
+             name = \"off\"\n\
+             months = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]\n\
+             weekdays = [1, 2, 3, 4, 5, 6, 7]\n\
+             start_min = 0\n\
+             end_min = 720\n\
+             rate = 10.0\n\
+             [[contracts.charges.periods]]\n\
+             name = \"on\"\n\
+             months = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]\n\
+             weekdays = [1, 2, 3, 4, 5, 6, 7]\n\
+             start_min = 720\n\
+             end_min = 1440\n\
+             rate = 40.0\n",
+        );
+        let tariff = SiteTariff::from_toml(&text).expect("tou");
+        assert!(matches!(
+            tariff.contracts()[0].charges()[0],
+            Charge::Energy(Settlement::Tou(_))
+        ));
+        let encoded = SiteTariff::to_toml(&tariff).expect("encode toml");
+        let again = SiteTariff::from_toml(&encoded).expect("decode toml");
+        assert_eq!(tariff, again);
+        let encoded = SiteTariff::to_json(&tariff).expect("encode json");
+        let again = SiteTariff::from_json(&encoded).expect("decode json");
+        assert_eq!(tariff, again);
+
+        let overlap = shell(
+            "[[contracts.charges]]\n\
+             type = \"energy\"\n\
+             kind = \"tou\"\n\
+             [[contracts.charges.periods]]\n\
+             name = \"a\"\n\
+             months = [6]\n\
+             weekdays = [1]\n\
+             start_min = 0\n\
+             end_min = 800\n\
+             rate = 10.0\n\
+             [[contracts.charges.periods]]\n\
+             name = \"b\"\n\
+             months = [6]\n\
+             weekdays = [1]\n\
+             start_min = 600\n\
+             end_min = 1440\n\
+             rate = 20.0\n",
+        );
+        let err = SiteTariff::from_toml(&overlap).expect_err("overlap");
+        assert!(err.to_string().contains("overlap"), "got {err}");
+    }
+
+    #[test]
+    fn ratcheted_peak_without_a_demand_charge_is_refused_on_parse() {
+        // SYNTHETIC. Not a real tariff.
+        let text = shell(
+            "[[contracts.charges]]\ntype = \"facilities\"\nrate_per_kw = 2.0\nbasis = \"ratcheted_peak\"\n",
+        );
+        let err = SiteTariff::from_toml(&text).expect_err("no demand");
+        assert!(
+            err.to_string().contains("needs a demand charge"),
+            "got {err}"
+        );
+        let json = r#"{"site":"synthetic-shell","contracts":[{"name":"primary","applies_to":"site","period":{"start":"2026-01-01","end":"2026-12-31"},"charges":[{"type":"facilities","rate_per_kw":2.0,"basis":"ratcheted_peak"}]}]}"#;
+        let err = SiteTariff::from_json(json).expect_err("no demand");
+        assert!(
+            err.to_string().contains("needs a demand charge"),
+            "got {err}"
+        );
     }
 }

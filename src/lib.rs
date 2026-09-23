@@ -179,6 +179,9 @@ pub enum TariffError {
     /// `ratcheted_peak` basis that also carries a contract quantity.
     #[error("facilities basis ratcheted_peak does not take contract_kw")]
     UnexpectedContractKw,
+    /// `ratcheted_peak` facilities with no demand charge on the same contract.
+    #[error("facilities basis ratcheted_peak needs a demand charge")]
+    RatchetedPeakWithoutDemand,
     /// Supplied coincident-peak kW count does not match the rule.
     #[error("coincident-peak intervals: expected {expected}, got {got}")]
     IntervalCountMismatch {

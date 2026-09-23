@@ -4,7 +4,7 @@
 
 use crate::TariffError;
 use crate::contract::{Charge, Kilowatt, KilowattHour, SiteTariff, Usd, YearMonth};
-use crate::demand::{DemandHistory, demand_charge};
+use crate::demand::{DemandHistory, demand_charge, ratcheted_kilowatts};
 use crate::facilities::facilities_bill;
 use crate::settlement::{EnergyPrices, energy_bill_local};
 use crate::tou::CivilMinute;
@@ -85,7 +85,12 @@ pub fn month_bill(tariff: &SiteTariff, inputs: &MonthInputs<'_>) -> Result<Month
     let mut facilities = 0.0;
     let mut fixed = 0.0;
     for contract in tariff.contracts() {
-        let ratcheted_kw = ratcheted_kilowatts(contract.charges(), inputs);
+        let ratcheted_kw = ratcheted_kilowatts(
+            contract.charges(),
+            inputs.kw_by_interval,
+            inputs.month,
+            inputs.history,
+        );
         for charge in contract.charges() {
             match charge {
                 Charge::Energy(settlement) => {
@@ -108,8 +113,7 @@ pub fn month_bill(tariff: &SiteTariff, inputs: &MonthInputs<'_>) -> Result<Month
                     .get();
                 }
                 Charge::Facilities(facilities_charge) => {
-                    facilities +=
-                        facilities_bill(facilities_charge, Kilowatt::new(ratcheted_kw)).get();
+                    facilities += facilities_bill(facilities_charge, ratcheted_kw).get();
                 }
                 Charge::Fixed(fixed_charge) => fixed += fixed_charge.amount().get(),
                 Charge::CoincidentPeak(_) => {}
@@ -122,25 +126,6 @@ pub fn month_bill(tariff: &SiteTariff, inputs: &MonthInputs<'_>) -> Result<Month
         facilities: Usd::new(facilities),
         fixed: Usd::new(fixed),
     })
-}
-
-fn ratcheted_kilowatts(charges: &[Charge], inputs: &MonthInputs<'_>) -> f64 {
-    charges
-        .iter()
-        .filter_map(|charge| match charge {
-            Charge::Demand(demand_charge_spec) => Some(
-                demand_charge(
-                    demand_charge_spec,
-                    inputs.kw_by_interval,
-                    inputs.month,
-                    inputs.history,
-                )
-                .billed_kw()
-                .get(),
-            ),
-            _ => None,
-        })
-        .fold(0.0, f64::max)
 }
 
 #[cfg(test)]
